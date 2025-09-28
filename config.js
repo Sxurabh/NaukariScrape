@@ -8,15 +8,21 @@ export const config = {
   // --- Pagination ---
   PAGES_TO_SCRAPE: 2,
 
+  // --- Concurrency & Retries ---
+  CONCURRENT_JOBS: 5, 
+  RETRY_COUNT: 3,
+  RETRY_DELAY_MS: 1000,
+
   // --- Filters ---
   APPLY_FRESHNESS_FILTER: true,
 
   // --- Puppeteer Settings ---
-  HEADLESS_MODE: true, // Set to false to watch the browser actions
-  NETWORK_TIMEOUT: 90000, // 90 seconds
+  HEADLESS_MODE: true,
+  NETWORK_TIMEOUT: 90000,
 
   // --- Selectors (for easier maintenance) ---
   SELECTORS: {
+    // Search results page
     filterFreshnessButton: '#filter-freshness',
     filterFreshness7Days: 'a[data-id="filter-freshness-7"]',
     jobCard: 'div.cust-job-tuple',
@@ -24,9 +30,14 @@ export const config = {
     companyName: 'a.comp-name',
     experience: 'span.expwdth',
     location: 'span.locWdth',
-    pageButton: (page) => `div.styles_pages__v1rAK a[href$='-${page}']`,
+    // FINAL, MOST ROBUST SELECTOR for the page button
+    pageButton: (page) => `a[href*='-jobs-in-'][href$='-${page}']`,
+
+    // Job details page
+    jobDescription: 'section[class*="job-desc"]',
+    skills: '.styles_key-skill__GIPn_ .styles_chip__7YCfG',
   },
 
   // --- File Output ---
-  OUTPUT_FILENAME_PREFIX: 'naukri_jobs',
+  OUTPUT_FILENAME_PREFIX: 'naukri_jobs_detailed',
 };

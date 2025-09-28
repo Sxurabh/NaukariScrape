@@ -16,17 +16,21 @@ export async function saveJobsToExcel(allJobs) {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Jobs');
 
-  // Define columns
+  // Define columns - Added Job Description and Skills
   sheet.columns = [
     { header: 'Title', key: 'title', width: 45 },
     { header: 'Company', key: 'company', width: 35 },
     { header: 'Experience', key: 'experience', width: 15 },
     { header: 'Location', key: 'location', width: 30 },
+    { header: 'Skills', key: 'skills', width: 50 },
+    { header: 'Job Description', key: 'description', width: 70 },
     { header: 'URL', key: 'url', width: 60 },
   ];
 
-  // Make header bold
+  // Make header bold and wrap text for description
   sheet.getRow(1).font = { bold: true };
+  sheet.getColumn('description').alignment = { wrapText: true, vertical: 'top' };
+  sheet.getColumn('skills').alignment = { wrapText: true, vertical: 'top' };
 
   // Add job data
   sheet.addRows(allJobs);
@@ -39,7 +43,8 @@ export async function saveJobsToExcel(allJobs) {
   try {
     await workbook.xlsx.writeFile(filename);
     logger.info(`🎉 Success! Job data saved to ${filename}`);
-  } catch (error) {
+  } catch (error)
+ {
     logger.error(`❌ Could not save the Excel file: ${filename}`, error);
     throw error; // Re-throw to be caught by the main process
   }
