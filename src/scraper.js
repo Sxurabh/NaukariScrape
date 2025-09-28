@@ -3,12 +3,10 @@ import puppeteer from 'puppeteer';
 import { config } from '../config.js';
 import { logger } from './logger.js';
 import { saveJobsToExcel } from './excel.js';
+import { retry, chunk } from './utils.js';
 
-/**
- * Initializes and launches the Puppeteer browser instance.
- */
 async function launchBrowser() {
-  logger.info('🚀 Launching browser...');
+  logger.info('Launching browser...');
   return await puppeteer.launch({
     headless: config.HEADLESS_MODE,
     args: [
@@ -19,96 +17,88 @@ async function launchBrowser() {
   });
 }
 
-/**
- * Scrapes job data from a single page.
- * @param {import('puppeteer').Page} page - The Puppeteer page object.
- * @returns {Promise<Array<object>>} - A promise that resolves to an array of job objects.
- */
-async function scrapePage(page) {
+async function scrapeSummaryPage(page) {
   try {
     await page.waitForSelector(config.SELECTORS.jobCard, { timeout: 30000 });
   } catch (error) {
-    logger.warn('Could not find job card selector. This page might be empty.');
-    return []; // Return empty array if no jobs are found
+    logger.warn('Could not find job card selector on this page. It might be empty.');
+    return [];
   }
-
-  return await page.$$eval(config.SELECTORS.jobCard, (jobCards, selectors) => {
+  return page.$$eval(config.SELECTORS.jobCard, (jobCards, selectors) => {
     return jobCards.map(card => {
       const titleElement = card.querySelector(selectors.jobTitle);
-      const companyElement = card.querySelector(selectors.companyName);
-      const experienceElement = card.querySelector(selectors.experience);
-      const locationElement = card.querySelector(selectors.location);
       return {
         title: titleElement?.innerText.trim() || 'N/A',
-        company: companyElement?.innerText.trim() || 'N/A',
-        experience: experienceElement?.innerText.trim() || 'N/A',
-        location: locationElement?.innerText.trim() || 'N/A',
-        url: titleElement?.href || 'N/A',
+        company: card.querySelector(selectors.companyName)?.innerText.trim() || 'N/A',
+        experience: card.querySelector(selectors.experience)?.innerText.trim() || 'N/A',
+        location: card.querySelector(selectors.location)?.innerText.trim() || 'N/A',
+        url: titleElement?.href || null,
       };
-    });
-  }, config.SELECTORS); // Pass selectors into $$eval
+    }).filter(job => job.url);
+  }, config.SELECTORS);
 }
 
-/**
- * The main scraping function for Naukri.com.
- */
+async function scrapeJobDetails(browser, jobSummary) {
+  const detailPage = await browser.newPage();
+  try {
+    await retry(() => detailPage.goto(jobSummary.url, { waitUntil: 'networkidle2' }), `Navigating to ${jobSummary.url}`);
+    const description = await detailPage.$eval(config.SELECTORS.jobDescription, el => el.innerText).catch(() => 'N/A');
+    const skills = await detailPage.$$eval(config.SELECTORS.skills, nodes => nodes.map(n => n.innerText).join(', ')).catch(() => 'N/A');
+    return { ...jobSummary, description, skills };
+  } catch (error) {
+    logger.warn(`Could not scrape details for "${jobSummary.title}". Skipping.`);
+    return { ...jobSummary, description: 'Error scraping details', skills: 'Error scraping details' };
+  } finally {
+    await detailPage.close();
+  }
+}
+
 export async function scrapeNaukriJobs() {
   const browser = await launchBrowser();
   const page = await browser.newPage();
   await page.setViewport({ width: 1366, height: 768 });
-
-  const allJobs = [];
-
+  const allJobSummaries = [];
   try {
-    const naukriUrl = `https://www.naukri.com/${config.JOB_KEYWORDS.replace(' ', '-')}-jobs-in-${config.JOB_LOCATION.replace(' ', '-')}-experience-${config.EXPERIENCE}`;
+    // FINAL CORRECTED URL with experience as a query parameter
+    const naukriUrl = `https://www.naukri.com/${config.JOB_KEYWORDS.replace(' ', '-')}-jobs-in-${config.JOB_LOCATION.replace(' ', '-')}?experience=${config.EXPERIENCE}`;
+    
     await page.goto(naukriUrl, { waitUntil: 'networkidle2', timeout: config.NETWORK_TIMEOUT });
-    logger.info(`✅ Navigated to initial URL: ${naukriUrl}`);
-
-    if (config.APPLY_FRESHNESS_FILTER) {
-      try {
-        logger.info("⏳ Applying 'Freshness: Last 7 days' filter...");
-        await page.click(config.SELECTORS.filterFreshnessButton);
-        await page.click(config.SELECTORS.filterFreshness7Days);
-        await page.waitForNavigation({ waitUntil: 'networkidle2' });
-        logger.info('✅ Filter applied successfully.');
-      } catch (e) {
-        logger.warn('⚠️ Could not apply the freshness filter.', e.message);
-      }
-    }
+    logger.success(`Mapsd to initial URL: ${naukriUrl}`);
 
     for (let currentPage = 1; currentPage <= config.PAGES_TO_SCRAPE; currentPage++) {
-      logger.info(`\n--- Scraping Page ${currentPage} of ${config.PAGES_TO_SCRAPE} ---`);
-
+      logger.step(`Scraping Summary Page ${currentPage} of ${config.PAGES_TO_SCRAPE}`);
       if (currentPage > 1) {
         try {
           const pageButtonSelector = config.SELECTORS.pageButton(currentPage);
-          await page.waitForSelector(pageButtonSelector, { timeout: 10000 });
-          await page.click(pageButtonSelector);
-          await page.waitForNavigation({ waitUntil: 'networkidle2' });
-          logger.info(`✅ Navigated to page ${currentPage}.`);
+          await page.waitForSelector(pageButtonSelector, { timeout: 15000 });
+          await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle2' }),
+            page.click(pageButtonSelector),
+          ]);
         } catch (e) {
-          logger.warn(`Could not find or click the link for page ${currentPage}. Ending scraping.`);
-          break; // Exit loop if page button isn't found
+          logger.warn(`Could not navigate to page ${currentPage}. Ending summary collection.`);
+          break;
         }
       }
-
-      const jobsOnPage = await scrapePage(page);
-      if (jobsOnPage.length > 0) {
-        allJobs.push(...jobsOnPage);
-        logger.info(`✅ Scraped ${jobsOnPage.length} jobs from page ${currentPage}.`);
-      } else {
-        logger.warn('No jobs found on this page. It might be the last page.');
-        break; // Stop if a page has no jobs
-      }
+      const summariesOnPage = await scrapeSummaryPage(page);
+      allJobSummaries.push(...summariesOnPage);
+      logger.success(`Found ${summariesOnPage.length} job summaries.`);
     }
 
-    await saveJobsToExcel(allJobs);
-
+    logger.step(`Collected ${allJobSummaries.length} total job summaries. Now scraping details...`);
+    const allJobsWithDetails = [];
+    const jobChunks = chunk(allJobSummaries, config.CONCURRENT_JOBS);
+    for (const [index, chunkOfJobs] of jobChunks.entries()) {
+      logger.info(`Processing chunk ${index + 1} of ${jobChunks.length}...`);
+      const promises = chunkOfJobs.map(summary => scrapeJobDetails(browser, summary));
+      const results = await Promise.all(promises);
+      allJobsWithDetails.push(...results);
+    }
+    
+    await saveJobsToExcel(allJobsWithDetails);
   } catch (error) {
-    logger.error('❌ An error occurred during the scraping process:', error);
-    const screenshotPath = 'error_screenshot.png';
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-    logger.info(`📸 Screenshot of the error page saved to: ${screenshotPath}`);
+    logger.error('A critical error occurred in the main scraping process:', error);
+    await page.screenshot({ path: 'critical_error_screenshot.png', fullPage: true });
   } finally {
     await browser.close();
     logger.info('Browser closed.');

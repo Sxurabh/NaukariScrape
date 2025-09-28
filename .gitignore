@@ -1,9 +1,11 @@
 # Dependencies
 /node_modules
 
-# Generated output files
-/naukri_jobs.csv
-/error_screenshot.png
+# Generated files
+/output/
+
+# Environment variables
+.env
 
 # Log files
 npm-debug.log*
