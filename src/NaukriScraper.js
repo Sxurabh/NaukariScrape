@@ -18,7 +18,13 @@ export class NaukriScraper {
     logger.info('Launching browser in stealth mode...');
     this.browser = await puppeteer.launch({
       headless: config.HEADLESS_MODE,
-      args: ['--start-maximized', '--disable-notifications'],
+      // --- FIX: Added arguments for running in a CI/CD environment like GitHub Actions ---
+      args: [
+        '--start-maximized',
+        '--disable-notifications',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+      ],
     });
     this.page = await this.browser.newPage();
     await this.page.setViewport({ width: 1366, height: 768 });
