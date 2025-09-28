@@ -1,6 +1,7 @@
 // src/excel.js
 import ExcelJS from 'exceljs';
 import path from 'path';
+import fs from 'fs/promises'; // Import fs/promises
 import { logger } from './logger.js';
 import { config } from '../config.js';
 import { ensureDirExists } from './utils.js';
@@ -11,6 +12,19 @@ export async function saveJobsToExcel(allJobs) {
     return;
   }
 
+  // --- Ensure the output directory exists ---
+  await ensureDirExists(config.OUTPUT_DIR);
+
+  // --- Save to JSON (for the webapp) ---
+  const jsonFilePath = path.join(config.OUTPUT_DIR, 'scraped_data.json');
+  try {
+    await fs.writeFile(jsonFilePath, JSON.stringify(allJobs, null, 2), 'utf-8');
+    logger.success(`📝 Job data saved to ${jsonFilePath} for the webapp.`);
+  } catch (error) {
+    logger.error(`❌ Could not save the JSON file: ${jsonFilePath}`, error);
+  }
+
+  // --- Save to Excel (existing functionality) ---
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Jobs');
 
@@ -36,7 +50,6 @@ export async function saveJobsToExcel(allJobs) {
   const filePath = path.join(config.OUTPUT_DIR, filename);
 
   try {
-    await ensureDirExists(config.OUTPUT_DIR);
     await workbook.xlsx.writeFile(filePath);
     logger.success(`🎉 Success! Job data saved to ${filePath}`);
   } catch (error) {
