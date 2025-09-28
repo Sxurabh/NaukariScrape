@@ -1,7 +1,4 @@
 // config.js
-
-// -- All your scraper settings are here --
-
 export const config = {
   // --- Search Parameters ---
   JOB_KEYWORDS: "Analyst",
@@ -9,11 +6,27 @@ export const config = {
   EXPERIENCE: "2", // Experience in years
 
   // --- Pagination ---
-  // The total number of pages you want to scrape.
-  // Set to 1 if you only want the first page.
   PAGES_TO_SCRAPE: 2,
 
   // --- Filters ---
-  // Set to true to apply the "Last 7 days" filter, false to disable it.
   APPLY_FRESHNESS_FILTER: true,
+
+  // --- Puppeteer Settings ---
+  HEADLESS_MODE: true, // Set to false to watch the browser actions
+  NETWORK_TIMEOUT: 90000, // 90 seconds
+
+  // --- Selectors (for easier maintenance) ---
+  SELECTORS: {
+    filterFreshnessButton: '#filter-freshness',
+    filterFreshness7Days: 'a[data-id="filter-freshness-7"]',
+    jobCard: 'div.cust-job-tuple',
+    jobTitle: 'a.title',
+    companyName: 'a.comp-name',
+    experience: 'span.expwdth',
+    location: 'span.locWdth',
+    pageButton: (page) => `div.styles_pages__v1rAK a[href$='-${page}']`,
+  },
+
+  // --- File Output ---
+  OUTPUT_FILENAME_PREFIX: 'naukri_jobs',
 };
