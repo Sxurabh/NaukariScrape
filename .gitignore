@@ -1,0 +1,11 @@
+# Dependencies
+/node_modules
+
+# Generated output files
+/naukri_jobs.csv
+/error_screenshot.png
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

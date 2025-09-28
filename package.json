@@ -1,0 +1,22 @@
+{
+  "name": "naukri_scraper_project",
+  "version": "1.0.0",
+  "description": "A Node.js scraper for Naukri.com using Puppeteer.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "scraper",
+    "puppeteer",
+    "naukri"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "json2csv": "^6.0.0-alpha.2",
+    "puppeteer": "^22.12.1"
+  }
+}
