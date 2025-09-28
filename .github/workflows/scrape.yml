@@ -1,0 +1,43 @@
+# .github/workflows/scrape.yml
+name: Naukri.com Scraper
+
+on:
+  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
+  schedule:
+    - cron: '0 0 * * *' # Runs every day at midnight UTC
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18' # Match the version you use locally
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the scraper
+        run: node index.js
+        env:
+          # --- IMPORTANT ---
+          # Add these environment variables as "Secrets" in your GitHub repo settings
+          # Go to Settings > Secrets and variables > Actions > New repository secret
+          JOB_KEYWORDS: ${{ secrets.JOB_KEYWORDS }}
+          JOB_LOCATION: ${{ secrets.JOB_LOCATION }}
+          EXPERIENCE: ${{ secrets.EXPERIENCE }}
+          PAGES_TO_SCRAPE: ${{ secrets.PAGES_TO_SCRAPE }}
+          HEADLESS_MODE: true # Must be true on GitHub Actions
+
+      - name: Commit and push if there are changes
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add -A .
+          git diff --quiet && git diff --staged --quiet || (git commit -m "📊 Automated data scrape" && git push)
