@@ -1,6 +1,20 @@
 // src/utils.js
+import fs from 'fs/promises';
 import { logger } from './logger.js';
 import { config } from '../config.js';
+
+/**
+ * Ensures that a directory exists, creating it if necessary.
+ * @param {string} dirPath - The path to the directory.
+ */
+export async function ensureDirExists(dirPath) {
+  try {
+    await fs.mkdir(dirPath, { recursive: true });
+  } catch (error) {
+    logger.error(`Could not create directory at ${dirPath}:`, error);
+    throw error;
+  }
+}
 
 /**
  * A utility function to retry an async operation a specified number of times.
@@ -11,14 +25,13 @@ import { config } from '../config.js';
 export async function retry(asyncFn, operationName = 'operation') {
   for (let attempt = 1; attempt <= config.RETRY_COUNT; attempt++) {
     try {
-      return await asyncFn(); // Attempt the operation
+      return await asyncFn();
     } catch (error) {
       logger.warn(`Attempt ${attempt} for ${operationName} failed: ${error.message}`);
       if (attempt === config.RETRY_COUNT) {
         logger.error(`All ${config.RETRY_COUNT} attempts for ${operationName} failed.`);
-        throw error; // Re-throw the error after the final attempt
+        throw error;
       }
-      // Wait for a short delay before the next attempt
       await new Promise(resolve => setTimeout(resolve, config.RETRY_DELAY_MS));
     }
   }
