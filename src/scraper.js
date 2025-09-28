@@ -9,10 +9,13 @@ async function launchBrowser() {
   logger.info('Launching browser...');
   return await puppeteer.launch({
     headless: config.HEADLESS_MODE,
+    // --- FIX: Added arguments for running in a CI/CD environment like GitHub Actions ---
     args: [
       '--start-maximized',
       '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
       '--disable-notifications',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
     ],
   });
 }
