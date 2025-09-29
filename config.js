@@ -25,6 +25,12 @@ export const config = {
   // --- Puppeteer Settings (from .env) ---
   HEADLESS_MODE: process.env.HEADLESS_MODE === 'true',
   NETWORK_TIMEOUT: 90000,
+  PUPPETEER_ARGS: [
+    '--start-maximized',
+    '--disable-notifications',
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+  ],
 
   // --- Static Selectors ---
   SELECTORS: {

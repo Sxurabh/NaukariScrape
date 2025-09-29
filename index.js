@@ -21,7 +21,7 @@ async function main() {
     const previouslyScrapedUrls = await loadCachedUrls();
     
     // Scrape job summaries from Naukri
-    await scraper.navigateToSearchPage();
+    await scraper.navigateToSearchPage(config.JOB_KEYWORDS, config.JOB_LOCATION, config.EXPERIENCE);
     const allSummaries = [];
     for (let i = 1; i <= config.PAGES_TO_SCRAPE; i++) {
       logger.step(`Scraping Summary Page ${i} of ${config.PAGES_TO_SCRAPE}`);
@@ -43,12 +43,18 @@ async function main() {
     // Scrape detailed information for new jobs
     const jobChunks = chunk(newJobSummaries, config.CONCURRENT_JOBS);
     const allJobsWithDetails = [];
-    for (const [index, jobChunk] of jobChunks.entries()) {
+
+    // Process chunks in parallel for faster scraping
+    const promises = jobChunks.map((jobChunk, index) => {
       logger.info(`Processing chunk ${index + 1} of ${jobChunks.length}...`);
-      const promises = jobChunk.map(summary => scraper.scrapeJobDetails(summary));
-      const results = await Promise.all(promises);
+      const chunkPromises = jobChunk.map(summary => scraper.scrapeJobDetails(summary));
+      return Promise.all(chunkPromises);
+    });
+
+    const chunkResults = await Promise.all(promises);
+    chunkResults.forEach(results => {
       allJobsWithDetails.push(...results.filter(job => job.description !== 'Error scraping details'));
-    }
+    });
 
     // Save new jobs to Google Sheets
     const insertedCount = await saveJobsToSheet(allJobsWithDetails);
