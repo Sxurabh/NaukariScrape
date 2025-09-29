@@ -27,23 +27,22 @@ jobs:
           node-version: '18'
           cache: 'npm'
       
-      # --- FINAL CACHE FIX: Use a dynamic key to force saves ---
+      # Step 1: Restore the most recent cache available.
       - name: Restore cache
         id: cache-urls
         uses: actions/cache@v4
         with:
           path: output/url_cache.json
-          # Key is now unique per run, forcing a save every time.
           key: ${{ runner.os }}-urls-${{ github.run_id }}
-          # Restore-keys finds the most recent cache from ANY previous run.
           restore-keys: |
             ${{ runner.os }}-urls-
 
+      # Step 2: If the user checked the box, delete the restored cache. This is the fix.
       - name: Invalidate cache if requested
-        if: steps.cache-urls.outputs.cache-hit == 'true' && inputs.invalidate_cache == true
+        if: ${{ inputs.invalidate_cache == true }}
         run: |
-          echo "Cache invalidation was requested. Deleting restored cache file."
-          rm output/url_cache.json
+          echo "Cache invalidation was requested. Deleting cache file if it exists."
+          rm -f output/url_cache.json
 
       - name: Install dependencies
         run: npm ci
