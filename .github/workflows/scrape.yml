@@ -3,7 +3,7 @@ name: Naukri.com Scraper
 
 on:
   schedule:
-    - cron: '0 0,12 * * *' # Runs every day at midnight and noon UTC
+    - cron: '0 0,12 * * *'
 
   workflow_dispatch:
     inputs:
@@ -27,7 +27,6 @@ jobs:
           node-version: '18'
           cache: 'npm'
       
-      # The cache key now changes if you check the "invalidate_cache" box
       - name: Cache URL data
         id: cache-urls
         uses: actions/cache@v4
@@ -43,7 +42,6 @@ jobs:
       - name: Run the scraper
         run: node index.js
         env:
-          # Add these as "Secrets" in your GitHub repo settings
           JOB_KEYWORDS: ${{ secrets.JOB_KEYWORDS }}
           JOB_LOCATION: ${{ secrets.JOB_LOCATION }}
           EXPERIENCE: ${{ secrets.EXPERIENCE }}
@@ -54,5 +52,11 @@ jobs:
           PROXY_LIST: ${{ secrets.PROXY_LIST }}
           HEADLESS_MODE: true
 
-      - name: Verify output files
-        run: ls -l output/
+      # --- NEW: Upload artifacts ---
+      # This step will run even if the scraper fails, saving any output files for debugging.
+      - name: Upload output files as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-output
+          path: output/

@@ -17,22 +17,32 @@ async function main() {
     await scraper.initialize();
     await initializeSheet();
 
-    // Use the caching system to get previously scraped URLs
     const previouslyScrapedUrls = await loadCachedUrls();
     
-    // Scrape job summaries from Naukri
     await scraper.navigateToSearchPage(config.JOB_KEYWORDS, config.JOB_LOCATION, config.EXPERIENCE);
     const allSummaries = [];
     for (let i = 1; i <= config.PAGES_TO_SCRAPE; i++) {
       logger.step(`Scraping Summary Page ${i} of ${config.PAGES_TO_SCRAPE}`);
       if (i > 1) await scraper.goToNextPage(i);
+      
       const summariesOnPage = await scraper.scrapeSummaryPage();
       allSummaries.push(...summariesOnPage);
       logger.success(`Found ${summariesOnPage.length} job summaries on page ${i}.`);
-      await sleep(Math.random() * 1500 + 500); // Add a small random delay between summary pages
+
+      // --- NEW: DEBUGGING STEP ---
+      // If the first page has no summaries, take a screenshot and exit early.
+      if (i === 1 && summariesOnPage.length === 0) {
+        const screenshotPath = path.join(config.OUTPUT_DIR, 'no_jobs_found_screenshot.png');
+        await scraper.page.screenshot({ path: screenshotPath, fullPage: true });
+        logger.error(`❌ No job summaries found on the first page. This likely means the scraper was blocked or a CAPTCHA was shown.`);
+        logger.info(`📸 A screenshot has been saved to help diagnose the issue: ${screenshotPath}`);
+        // We return here to ensure the screenshot artifact is saved.
+        return; 
+      }
+      
+      await sleep(Math.random() * 1500 + 500);
     }
 
-    // Filter out jobs that have already been scraped using the local cache
     const newJobSummaries = allSummaries.filter(job => job && job.url && !previouslyScrapedUrls.has(job.url));
     logger.step(`Found ${newJobSummaries.length} new jobs to scrape out of ${allSummaries.length} total.`);
 
@@ -41,7 +51,6 @@ async function main() {
       return;
     }
 
-    // Scrape detailed information for new jobs
     const jobChunks = chunk(newJobSummaries, config.CONCURRENT_JOBS);
     const allJobsWithDetails = [];
     
@@ -52,25 +61,21 @@ async function main() {
 
         results.forEach(job => {
             if (job.error) {
-                saveFailedJob(job); // Save to dead-letter queue
+                saveFailedJob(job);
             } else {
                 allJobsWithDetails.push(job);
             }
         });
-        await sleep(2000); // Wait 2 seconds between chunks to be respectful to the server
+        await sleep(2000);
     }
 
     logger.info(`Successfully scraped details for ${allJobsWithDetails.length} new jobs.`);
 
-    // Save new jobs to Google Sheets
     if (allJobsWithDetails.length > 0) {
       const insertedCount = await saveJobsToSheet(allJobsWithDetails);
       logger.success(`📝 Successfully saved ${insertedCount} new jobs to the Google Sheet.`);
       
-      // Update the local cache with the new URLs
       await updateCache(allJobsWithDetails.map(job => job.url));
-
-      // Optionally, save to Excel and JSON as a backup
       await saveJobsToExcel(allJobsWithDetails);
     } else {
         logger.info("No new jobs with details were successfully scraped to save.");
