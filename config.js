@@ -3,6 +3,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export const config = {
+  // --- Google Sheets (from .env) ---
+  GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID,
+  GCP_CLIENT_EMAIL: process.env.GCP_CLIENT_EMAIL,
+  // Replace escaped newlines for environment variable compatibility
+  GCP_PRIVATE_KEY: process.env.GCP_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+
   // --- Search Parameters (from .env) ---
   JOB_KEYWORDS: process.env.JOB_KEYWORDS || "Analyst",
   JOB_LOCATION: process.env.JOB_LOCATION || "Pune",
@@ -33,8 +39,7 @@ export const config = {
   },
 
   // --- File Output ---
-  OUTPUT_DIR: 'output', // All generated files will go here
+  OUTPUT_DIR: 'output',
   OUTPUT_FILENAME_PREFIX: 'naukri_jobs_detailed',
-  STATE_FILENAME: 'scraped_urls.json',
   ERROR_SCREENSHOT_FILENAME: 'critical_error_screenshot.png',
 };

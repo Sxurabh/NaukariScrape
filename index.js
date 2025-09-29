@@ -4,7 +4,8 @@ import { config } from './config.js';
 import { logger } from './src/logger.js';
 import { NaukriScraper } from './src/NaukriScraper.js';
 import { saveJobsToExcel } from './src/excel.js';
-import { loadScrapedUrls, saveScrapedUrls } from './src/state.js';
+import { initializeSheet, saveJobsToSheet } from './src/sheets.js';
+import { loadCachedUrls, updateCache } from './src/cache.js';
 import { chunk } from './src/utils.js';
 
 async function main() {
@@ -12,10 +13,14 @@ async function main() {
   const scraper = new NaukriScraper();
   
   try {
+    // Initialize scraper and connect to Google Sheets
     await scraper.initialize();
-    const previouslyScrapedUrls = await loadScrapedUrls();
-    logger.info(`Loaded ${previouslyScrapedUrls.size} previously scraped URLs.`);
+    await initializeSheet();
+
+    // Use the caching system to get previously scraped URLs
+    const previouslyScrapedUrls = await loadCachedUrls();
     
+    // Scrape job summaries from Naukri
     await scraper.navigateToSearchPage();
     const allSummaries = [];
     for (let i = 1; i <= config.PAGES_TO_SCRAPE; i++) {
@@ -26,6 +31,7 @@ async function main() {
       logger.success(`Found ${summariesOnPage.length} job summaries.`);
     }
 
+    // Filter out jobs that have already been scraped
     const newJobSummaries = allSummaries.filter(job => !previouslyScrapedUrls.has(job.url));
     logger.step(`Found ${newJobSummaries.length} new jobs to scrape out of ${allSummaries.length} total.`);
 
@@ -34,26 +40,33 @@ async function main() {
       return;
     }
 
+    // Scrape detailed information for new jobs
     const jobChunks = chunk(newJobSummaries, config.CONCURRENT_JOBS);
     const allJobsWithDetails = [];
     for (const [index, jobChunk] of jobChunks.entries()) {
       logger.info(`Processing chunk ${index + 1} of ${jobChunks.length}...`);
       const promises = jobChunk.map(summary => scraper.scrapeJobDetails(summary));
       const results = await Promise.all(promises);
-      allJobsWithDetails.push(...results);
+      allJobsWithDetails.push(...results.filter(job => job.description !== 'Error scraping details'));
     }
 
-    await saveJobsToExcel(allJobsWithDetails);
-    
-    const updatedScrapedUrls = new Set([...previouslyScrapedUrls, ...newJobSummaries.map(j => j.url)]);
-    await saveScrapedUrls(updatedScrapedUrls);
-    logger.success(`Updated state file with ${newJobSummaries.length} new URLs.`);
+    // Save new jobs to Google Sheets
+    const insertedCount = await saveJobsToSheet(allJobsWithDetails);
+    logger.success(`📝 Successfully saved ${insertedCount} new jobs to the Google Sheet.`);
+
+    // Update the local cache with the new URLs
+    await updateCache(allJobsWithDetails.map(job => job.url));
+
+    // Optionally, save to Excel and JSON as a backup
+    if (insertedCount > 0) {
+      await saveJobsToExcel(allJobsWithDetails);
+    }
 
   } catch (error) {
     logger.error('A critical error occurred:', error);
     if (scraper.page) {
         const screenshotPath = path.join(config.OUTPUT_DIR, config.ERROR_SCREENSHOT_FILENAME);
-        await scraper.page.screenshot({ path: screenshotPath });
+        await scraper.page.screenshot({ path: screenshotPath, fullPage: true });
         logger.info(`📸 Screenshot saved to: ${screenshotPath}`);
     }
   } finally {
