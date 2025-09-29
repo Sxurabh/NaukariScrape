@@ -18,13 +18,7 @@ export class NaukriScraper {
     logger.info('Launching browser in stealth mode...');
     this.browser = await puppeteer.launch({
       headless: config.HEADLESS_MODE,
-      // --- FIX: Added arguments for running in a CI/CD environment like GitHub Actions ---
-      args: [
-        '--start-maximized',
-        '--disable-notifications',
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-      ],
+      args: config.PUPPETEER_ARGS,
     });
     this.page = await this.browser.newPage();
     await this.page.setViewport({ width: 1366, height: 768 });
@@ -37,10 +31,9 @@ export class NaukriScraper {
     }
   }
 
-  async navigateToSearchPage() {
-    const url = `https://www.naukri.com/${config.JOB_KEYWORDS.replace(' ', '-')}-jobs-in-${config.JOB_LOCATION.replace(' ', '-')}?experience=${config.EXPERIENCE}`;
+  async navigateToSearchPage(keywords, location, experience) {
+    const url = `https://www.naukri.com/${keywords.replace(' ', '-')}-jobs-in-${location.replace(' ', '-')}?experience=${experience}`;
     await this.page.goto(url, { waitUntil: 'networkidle2', timeout: config.NETWORK_TIMEOUT });
-    // Fixed typo in the log message below
     logger.success(`Mapsd to initial URL: ${url}`);
   }
 
@@ -73,9 +66,21 @@ export class NaukriScraper {
     const detailPage = await this.browser.newPage();
     try {
       await retry(() => detailPage.goto(jobSummary.url, { waitUntil: 'networkidle2' }), `Navigating to ${jobSummary.url}`);
-      const description = await detailPage.$eval(config.SELECTORS.jobDescription, el => el.innerText).catch(() => 'N/A');
-      const skills = await detailPage.$$eval(config.SELECTORS.skills, nodes => nodes.map(n => n.innerText).join(', ')).catch(() => 'N/A');
+      
+      const description = await detailPage.$eval(config.SELECTORS.jobDescription, el => el.innerText).catch((error) => {
+        logger.warn(`Could not find description for ${jobSummary.title}. Error: ${error.message}`);
+        return 'N/A';
+      });
+      
+      const skills = await detailPage.$$eval(config.SELECTORS.skills, nodes => nodes.map(n => n.innerText).join(', ')).catch((error) => {
+        logger.warn(`Could not find skills for ${jobSummary.title}. Error: ${error.message}`);
+        return 'N/A';
+      });
+      
       return { ...jobSummary, description, skills };
+    } catch (error) {
+      logger.error(`Error scraping details for ${jobSummary.title}:`, error);
+      return { ...jobSummary, description: 'Error scraping details', skills: 'Error scraping details' };
     } finally {
       await detailPage.close();
     }
