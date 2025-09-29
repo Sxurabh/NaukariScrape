@@ -27,18 +27,17 @@ jobs:
           node-version: '18'
           cache: 'npm'
       
-      # --- FINAL FIX: Branch-Specific Caching ---
-      # This keying strategy ensures the cache is scoped to the current branch.
-      - name: Restore branch-specific cache
+      # --- FINAL CACHE FIX: Use a dynamic key to force saves ---
+      - name: Restore cache
         id: cache-urls
         uses: actions/cache@v4
         with:
           path: output/url_cache.json
-          # The key is now very specific to the branch and commit
-          key: ${{ runner.os }}-urls-${{ github.ref }}-${{ github.sha }}
-          # The restore-key is now ALSO specific to the branch
+          # Key is now unique per run, forcing a save every time.
+          key: ${{ runner.os }}-urls-${{ github.run_id }}
+          # Restore-keys finds the most recent cache from ANY previous run.
           restore-keys: |
-            ${{ runner.os }}-urls-${{ github.ref }}-
+            ${{ runner.os }}-urls-
 
       - name: Invalidate cache if requested
         if: steps.cache-urls.outputs.cache-hit == 'true' && inputs.invalidate_cache == true
