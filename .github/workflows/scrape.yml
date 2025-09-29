@@ -2,9 +2,16 @@
 name: Naukri.com Scraper
 
 on:
-  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
   schedule:
-    - cron: '0 0,12 * * *' # Runs every day at midnight and noon UTC (twice a day)
+    - cron: '0 0,12 * * *' # Runs every day at midnight and noon UTC
+
+  workflow_dispatch:
+    inputs:
+      invalidate_cache:
+        description: 'Run with a fresh cache (ignores existing cache)'
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   scrape:
@@ -20,13 +27,13 @@ jobs:
           node-version: '18'
           cache: 'npm'
       
-      # --- NEW: Cache the URL file ---
+      # The cache key now changes if you check the "invalidate_cache" box
       - name: Cache URL data
         id: cache-urls
         uses: actions/cache@v4
         with:
           path: output/url_cache.json
-          key: ${{ runner.os }}-urls-${{ github.sha }}
+          key: ${{ runner.os }}-urls-${{ github.sha }}-${{ inputs.invalidate_cache }}
           restore-keys: |
             ${{ runner.os }}-urls-
 
@@ -37,7 +44,6 @@ jobs:
         run: node index.js
         env:
           # Add these as "Secrets" in your GitHub repo settings
-          # Settings > Secrets and variables > Actions > New repository secret
           JOB_KEYWORDS: ${{ secrets.JOB_KEYWORDS }}
           JOB_LOCATION: ${{ secrets.JOB_LOCATION }}
           EXPERIENCE: ${{ secrets.EXPERIENCE }}
@@ -48,6 +54,5 @@ jobs:
           PROXY_LIST: ${{ secrets.PROXY_LIST }}
           HEADLESS_MODE: true
 
-      # This step is optional but good practice for debugging if the cache isn't working.
       - name: Verify output files
         run: ls -l output/
