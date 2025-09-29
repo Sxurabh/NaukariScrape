@@ -4,7 +4,7 @@ name: Naukri.com Scraper
 on:
   workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
   schedule:
-    - cron: '0 0 * * *' # Runs every day at midnight UTC
+    - cron: '0 0,12 * * *' # Runs every day at midnight and noon UTC (twice a day)
 
 jobs:
   scrape:
@@ -12,13 +12,23 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18' # Match the version you use locally
+          node-version: '18'
           cache: 'npm'
+      
+      # --- NEW: Cache the URL file ---
+      - name: Cache URL data
+        id: cache-urls
+        uses: actions/cache@v4
+        with:
+          path: output/url_cache.json
+          key: ${{ runner.os }}-urls-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-urls-
 
       - name: Install dependencies
         run: npm ci
@@ -26,18 +36,18 @@ jobs:
       - name: Run the scraper
         run: node index.js
         env:
-          # --- IMPORTANT ---
-          # Add these environment variables as "Secrets" in your GitHub repo settings
-          # Go to Settings > Secrets and variables > Actions > New repository secret
+          # Add these as "Secrets" in your GitHub repo settings
+          # Settings > Secrets and variables > Actions > New repository secret
           JOB_KEYWORDS: ${{ secrets.JOB_KEYWORDS }}
           JOB_LOCATION: ${{ secrets.JOB_LOCATION }}
           EXPERIENCE: ${{ secrets.EXPERIENCE }}
           PAGES_TO_SCRAPE: ${{ secrets.PAGES_TO_SCRAPE }}
-          HEADLESS_MODE: true # Must be true on GitHub Actions
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+          GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+          PROXY_LIST: ${{ secrets.PROXY_LIST }}
+          HEADLESS_MODE: true
 
-      - name: Commit and push if there are changes
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
-          git add -A .
-          git diff --quiet && git diff --staged --quiet || (git commit -m "📊 Automated data scrape" && git push)
+      # This step is optional but good practice for debugging if the cache isn't working.
+      - name: Verify output files
+        run: ls -l output/

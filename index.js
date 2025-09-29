@@ -4,9 +4,9 @@ import { config } from './config.js';
 import { logger } from './src/logger.js';
 import { NaukriScraper } from './src/NaukriScraper.js';
 import { saveJobsToExcel } from './src/excel.js';
-import { initializeSheet, saveJobsToSheet } from './src/sheets.js';
+import { initializeSheet, saveJobsToSheet, loadScrapedUrlsFromSheet } from './src/sheets.js';
 import { loadCachedUrls, updateCache } from './src/cache.js';
-import { chunk } from './src/utils.js';
+import { chunk, saveFailedJob, sleep } from './src/utils.js';
 
 async function main() {
   logger.info('🚀 Starting the Naukri.com scraper...');
@@ -28,11 +28,12 @@ async function main() {
       if (i > 1) await scraper.goToNextPage(i);
       const summariesOnPage = await scraper.scrapeSummaryPage();
       allSummaries.push(...summariesOnPage);
-      logger.success(`Found ${summariesOnPage.length} job summaries.`);
+      logger.success(`Found ${summariesOnPage.length} job summaries on page ${i}.`);
+      await sleep(Math.random() * 1500 + 500); // Add a small random delay between summary pages
     }
 
-    // Filter out jobs that have already been scraped
-    const newJobSummaries = allSummaries.filter(job => !previouslyScrapedUrls.has(job.url));
+    // Filter out jobs that have already been scraped using the local cache
+    const newJobSummaries = allSummaries.filter(job => job && job.url && !previouslyScrapedUrls.has(job.url));
     logger.step(`Found ${newJobSummaries.length} new jobs to scrape out of ${allSummaries.length} total.`);
 
     if (newJobSummaries.length === 0) {
@@ -43,33 +44,40 @@ async function main() {
     // Scrape detailed information for new jobs
     const jobChunks = chunk(newJobSummaries, config.CONCURRENT_JOBS);
     const allJobsWithDetails = [];
+    
+    for (const [index, jobChunk] of jobChunks.entries()) {
+        logger.info(`Processing chunk ${index + 1} of ${jobChunks.length}...`);
+        const chunkPromises = jobChunk.map(summary => scraper.scrapeJobDetails(summary));
+        const results = await Promise.all(chunkPromises);
 
-    // Process chunks in parallel for faster scraping
-    const promises = jobChunks.map((jobChunk, index) => {
-      logger.info(`Processing chunk ${index + 1} of ${jobChunks.length}...`);
-      const chunkPromises = jobChunk.map(summary => scraper.scrapeJobDetails(summary));
-      return Promise.all(chunkPromises);
-    });
+        results.forEach(job => {
+            if (job.error) {
+                saveFailedJob(job); // Save to dead-letter queue
+            } else {
+                allJobsWithDetails.push(job);
+            }
+        });
+        await sleep(2000); // Wait 2 seconds between chunks to be respectful to the server
+    }
 
-    const chunkResults = await Promise.all(promises);
-    chunkResults.forEach(results => {
-      allJobsWithDetails.push(...results.filter(job => job.description !== 'Error scraping details'));
-    });
+    logger.info(`Successfully scraped details for ${allJobsWithDetails.length} new jobs.`);
 
     // Save new jobs to Google Sheets
-    const insertedCount = await saveJobsToSheet(allJobsWithDetails);
-    logger.success(`📝 Successfully saved ${insertedCount} new jobs to the Google Sheet.`);
+    if (allJobsWithDetails.length > 0) {
+      const insertedCount = await saveJobsToSheet(allJobsWithDetails);
+      logger.success(`📝 Successfully saved ${insertedCount} new jobs to the Google Sheet.`);
+      
+      // Update the local cache with the new URLs
+      await updateCache(allJobsWithDetails.map(job => job.url));
 
-    // Update the local cache with the new URLs
-    await updateCache(allJobsWithDetails.map(job => job.url));
-
-    // Optionally, save to Excel and JSON as a backup
-    if (insertedCount > 0) {
+      // Optionally, save to Excel and JSON as a backup
       await saveJobsToExcel(allJobsWithDetails);
+    } else {
+        logger.info("No new jobs with details were successfully scraped to save.");
     }
 
   } catch (error) {
-    logger.error('A critical error occurred:', error);
+    logger.error('A critical error occurred in the main process:', error);
     if (scraper.page) {
         const screenshotPath = path.join(config.OUTPUT_DIR, config.ERROR_SCREENSHOT_FILENAME);
         await scraper.page.screenshot({ path: screenshotPath, fullPage: true });
